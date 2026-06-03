@@ -23,6 +23,8 @@ class NavBaseNode:
         self.waypoints_path = waypoints_path
         self.heartbeat_timeout_ms = heartbeat_timeout_ms
         self._verbs: dict[str, Callable[..., Any]] = {}
+        self.is_estopped: bool = False
+        self.estop_reason: str | None = None
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -41,6 +43,7 @@ class NavBaseNode:
             on_timeout=self._on_heartbeat_timeout,
         )
         self.register_verb("robot.heartbeat", self._verb_heartbeat)
+        self.register_verb("robot.estop", self._verb_estop)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -48,3 +51,8 @@ class NavBaseNode:
 
     def _on_heartbeat_timeout(self, _t: float) -> None:
         logger.warning("heartbeat timeout on %s", self.robot_id)
+
+    def _verb_estop(self, *, reason: str = "unspecified") -> dict[str, Any]:
+        self.is_estopped = True
+        self.estop_reason = reason
+        return {"ok": True, "code": "0"}
