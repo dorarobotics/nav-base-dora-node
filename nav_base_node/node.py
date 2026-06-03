@@ -220,3 +220,25 @@ class NavBaseNode:
             "code": "0",
             "data": {"obstacles": self._bridge.latest_obstacles()},
         }
+
+    def state_snapshot(self) -> dict[str, Any]:
+        """Return current state snapshot for 5 Hz state stream."""
+        if self._bridge is None:
+            return {
+                "robot_id": self.robot_id,
+                "pose": None,
+                "nav_status": None,
+                "obstacles_count": 0,
+                "estopped": self.is_estopped,
+                "estop_reason": self.estop_reason,
+                "controller_holder": self._guard.holder,
+            }
+        return {
+            "robot_id": self.robot_id,
+            "pose": self._bridge.latest_pose(),
+            "nav_status": self._bridge.current_status(),
+            "obstacles_count": len(self._bridge.latest_obstacles()),
+            "estopped": self.is_estopped,
+            "estop_reason": self.estop_reason,
+            "controller_holder": self._guard.holder,
+        }
