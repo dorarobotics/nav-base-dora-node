@@ -64,6 +64,14 @@ class NavBaseNode:
         self.register_verb("vendor.dora_nav.base.set_velocity", self._verb_set_velocity)
         self.register_verb("vendor.dora_nav.base.stop", self._verb_stop)
 
+    def install_localization_verbs(self) -> None:
+        """Register vendor.dora_nav.localization verbs."""
+        if self._bridge is None:
+            raise ValueError("nav_bridge required")
+        self.register_verb(
+            "vendor.dora_nav.localization.get_pose", self._verb_get_pose
+        )
+
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
         return {"ok": True, "code": "0"}
@@ -187,3 +195,14 @@ class NavBaseNode:
         self._bridge.cancel()
         self._bridge.request_cmd_vel({"linear": 0.0, "angular": 0.0})
         return {"ok": True, "code": "0"}
+
+    def _verb_get_pose(self) -> dict[str, Any]:
+        assert self._bridge is not None
+        pose = self._bridge.latest_pose()
+        if pose is None:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": "no pose received yet from localization",
+            }
+        return {"ok": True, "code": "0", "data": {"pose": pose}}
