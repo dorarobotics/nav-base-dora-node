@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from nav_base_node._watchdog import HeartbeatWatchdog
 from nav_base_node.controller_guard import ControllerGuard
@@ -36,7 +36,7 @@ class NavBaseNode:
     def dispatch(self, verb: str, args: dict[str, Any]) -> dict[str, Any]:
         if verb not in self._verbs:
             return {"ok": False, "code": "INVALID_PARAMS", "msg": f"unknown verb: {verb}"}
-        return self._verbs[verb](**args)
+        return cast(dict[str, Any], self._verbs[verb](**args))
 
     def install_common_verbs(self) -> None:
         """Register the four SPEC-V1 §8.1 common verbs."""
