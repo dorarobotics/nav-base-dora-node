@@ -43,7 +43,12 @@ class NavBaseNode:
     def dispatch(self, verb: str, args: dict[str, Any]) -> dict[str, Any]:
         if verb not in self._verbs:
             return {"ok": False, "code": "INVALID_PARAMS", "msg": f"unknown verb: {verb}"}
-        return cast(dict[str, Any], self._verbs[verb](**args))
+        try:
+            return cast(dict[str, Any], self._verbs[verb](**args))
+        except TypeError as e:
+            # Missing/extra/wrong-typed args reach the handler via **args; surface
+            # them as a clean INVALID_PARAMS envelope instead of crashing the loop.
+            return {"ok": False, "code": "INVALID_PARAMS", "msg": f"bad arguments for {verb}: {e}"}
 
     def install_common_verbs(self) -> None:
         """Register the four SPEC-V1 §8.1 common verbs."""
@@ -84,35 +89,60 @@ class NavBaseNode:
         return {"ok": True, "code": "0"}
 
     def _on_heartbeat_timeout(self, _t: float) -> None:
-        logger.warning("heartbeat timeout on %s", self.robot_id)
+        # Deadman fired during motion. Engage estop and bring the base to rest.
+        # NOTE: the periodic self._watchdog.tick() that triggers this must be driven
+        # by the dora event loop (node runtime — pending).
+        logger.warning("heartbeat timeout on %s — engaging estop", self.robot_id)
+        self.is_estopped = True
+        self.estop_reason = "heartbeat_timeout"
+        self._watchdog.disarm()
+        self._safe_stop()
         self._safety_events.append(
             {"kind": "heartbeat_timeout", "robot_id": self.robot_id}
         )
 
+    def _safe_stop(self) -> None:
+        """Cancel any active goal and command zero velocity (no-op without a bridge)."""
+        if self._bridge is not None:
+            self._bridge.cancel()
+            self._bridge.request_cmd_vel({"linear": 0.0, "angular": 0.0})
+
     def _verb_estop(self, *, reason: str = "unspecified") -> dict[str, Any]:
         self.is_estopped = True
         self.estop_reason = reason
+        self._watchdog.disarm()
         self._safety_events.append({"kind": "estop", "reason": reason})
+        # A latched flag is not enough for a mobile base — actively stop it.
+        self._safe_stop()
         return {"ok": True, "code": "0"}
 
     def _verb_release_control(self, *, control_source: str = "") -> dict[str, Any]:
         self._guard.release(control_source)
+        self._watchdog.disarm()
         return {"ok": True, "code": "0"}
 
-    def _verb_get_capabilities(self) -> dict[str, Any]:
+    def capabilities_advert(self) -> dict[str, Any]:
+        """The SPEC-V1 advert published on the `capabilities` stream.
+
+        Commands are a list of ``{"verb", "safety_tier"}`` objects — the shape the
+        octos bridge consumes (it reads ``advert["commands"][*]["verb"]``). A flat
+        verb-name list is NOT recognized by the bridge.
+        """
         return {
-            "ok": True,
-            "code": "0",
-            "data": {
-                "spec_version": "1.0.0",
-                "vendor": "dora_nav",
-                "model": "base",
-                "robot_id": self.robot_id,
-                "heartbeat_timeout_ms": self.heartbeat_timeout_ms,
-                "verbs": sorted(self._verbs.keys()),
-                "streams": ["state", "capabilities", "safety_event"],
-            },
+            "spec_version": "1.0.0",
+            "vendor": "dora_nav",
+            "model": "base",
+            "robot_id": self.robot_id,
+            "heartbeat_timeout_ms": self.heartbeat_timeout_ms,
+            "commands": [
+                {"verb": verb, "safety_tier": "emergency_override"}
+                for verb in sorted(self._verbs.keys())
+            ],
+            "streams": ["state", "capabilities", "safety_event"],
         }
+
+    def _verb_get_capabilities(self) -> dict[str, Any]:
+        return {"ok": True, "code": "0", "data": self.capabilities_advert()}
 
     def _verb_go_to_pose(
         self, *, pose: dict[str, Any], control_source: str = ""
@@ -140,6 +170,7 @@ class NavBaseNode:
             self._guard.acquire(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        self._watchdog.arm()
         assert self._bridge is not None
         self._bridge.request_goal(pose)
         return {"ok": True, "code": "0"}
@@ -176,6 +207,7 @@ class NavBaseNode:
             self._guard.acquire(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        self._watchdog.arm()
         assert self._bridge is not None
         self._bridge.request_goal(pose)
         return {"ok": True, "code": "0"}
@@ -193,6 +225,7 @@ class NavBaseNode:
             self._guard.acquire(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        self._watchdog.arm()
         assert self._bridge is not None
         self._bridge.cancel()
         self._bridge.request_cmd_vel(

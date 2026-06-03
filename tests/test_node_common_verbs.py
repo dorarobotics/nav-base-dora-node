@@ -59,5 +59,17 @@ def test_get_capabilities_returns_spec_advert_shape():
     assert data["spec_version"] == "1.0.0"
     assert data["vendor"] == "dora_nav"
     assert data["model"] == "base"
-    assert "robot.heartbeat" in data["verbs"]
+    # The bridge consumes advert["commands"][*]["verb"] — a flat verb list is not
+    # recognized. Each command must carry a verb and a safety_tier.
+    verbs = {cmd["verb"] for cmd in data["commands"]}
+    assert "robot.heartbeat" in verbs
+    assert all("safety_tier" in cmd for cmd in data["commands"])
     assert "state" in data["streams"]
+
+
+def test_dispatch_bad_args_returns_invalid_params():
+    node = NavBaseNode(robot_id="nav-base-test")
+    node.install_common_verbs()
+    out = node.dispatch("robot.estop", {"bogus": 1})
+    assert out["ok"] is False
+    assert out["code"] == "INVALID_PARAMS"

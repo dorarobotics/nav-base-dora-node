@@ -28,11 +28,12 @@ def test_full_install_sequence():
     n.install_localization_verbs()
     n.install_map_verbs()
     caps = n.dispatch("robot.get_capabilities", {})
-    verbs = set(caps["data"]["verbs"])
+    verbs = {cmd["verb"] for cmd in caps["data"]["commands"]}
     expected = {
         "robot.heartbeat", "robot.estop", "robot.release_control",
         "robot.get_capabilities",
         "vendor.dora_nav.base.go_to_pose",
+        "vendor.dora_nav.base.go_to_named",
         "vendor.dora_nav.base.set_velocity",
         "vendor.dora_nav.base.stop",
         "vendor.dora_nav.localization.get_pose",
