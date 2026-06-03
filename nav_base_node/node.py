@@ -61,6 +61,7 @@ class NavBaseNode:
             raise ValueError("nav_bridge required to install motion verbs")
         self.register_verb("vendor.dora_nav.base.go_to_pose", self._verb_go_to_pose)
         self.register_verb("vendor.dora_nav.base.go_to_named", self._verb_go_to_named)
+        self.register_verb("vendor.dora_nav.base.set_velocity", self._verb_set_velocity)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -157,4 +158,24 @@ class NavBaseNode:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
         assert self._bridge is not None
         self._bridge.request_goal(pose)
+        return {"ok": True, "code": "0"}
+
+    def _verb_set_velocity(
+        self, *, linear: float, angular: float, control_source: str = ""
+    ) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        try:
+            self._guard.acquire(control_source)
+        except Exception as e:
+            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        assert self._bridge is not None
+        self._bridge.cancel()
+        self._bridge.request_cmd_vel(
+            {"linear": float(linear), "angular": float(angular)}
+        )
         return {"ok": True, "code": "0"}

@@ -91,3 +91,25 @@ def test_go_to_named_rejects_unknown_name(tmp_path):
     )
     assert out["ok"] is False
     assert out["code"] == "INVALID_PARAMS"
+
+
+def test_set_velocity_cancels_then_queues_cmd_vel():
+    n, b = _node()
+    out = n.dispatch(
+        "vendor.dora_nav.base.set_velocity",
+        {"linear": 0.3, "angular": 0.0, "control_source": "test"},
+    )
+    assert out["ok"] is True
+    assert b.pending_cancels == 1
+    assert b.pending_cmd_vels == [{"linear": 0.3, "angular": 0.0}]
+
+
+def test_set_velocity_blocked_by_estop():
+    n, _ = _node()
+    n.dispatch("robot.estop", {"reason": "test"})
+    out = n.dispatch(
+        "vendor.dora_nav.base.set_velocity",
+        {"linear": 0.3, "angular": 0.0, "control_source": "test"},
+    )
+    assert out["ok"] is False
+    assert out["code"] == "VENDOR_ERROR"
