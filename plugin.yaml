@@ -1,0 +1,23 @@
+id: nav-base
+version: 0.1.0
+class_path: nav_base_node.node:NavBaseNode
+spec_version: "1.0.0"
+vendor: dora_nav
+model: base
+inputs:
+  - cmd_request
+  - dora_nav_pose
+  - dora_nav_status
+  - dora_nav_obstacles
+outputs:
+  - cmd_response
+  - capabilities
+  - state
+  - safety_event
+  - dora_nav_goal
+  - dora_nav_cancel
+  - dora_nav_cmd_vel
+config:
+  waypoints_path: "load_path.yml"
+  heartbeat_timeout_ms: 1000
+restart_policy: on-failure
