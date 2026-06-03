@@ -72,6 +72,12 @@ class NavBaseNode:
             "vendor.dora_nav.localization.get_pose", self._verb_get_pose
         )
 
+    def install_map_verbs(self) -> None:
+        """Register vendor.dora_nav.map verbs."""
+        if self._bridge is None:
+            raise ValueError("nav_bridge required")
+        self.register_verb("vendor.dora_nav.map.get_obstacles", self._verb_get_obstacles)
+
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
         return {"ok": True, "code": "0"}
@@ -206,3 +212,11 @@ class NavBaseNode:
                 "msg": "no pose received yet from localization",
             }
         return {"ok": True, "code": "0", "data": {"pose": pose}}
+
+    def _verb_get_obstacles(self) -> dict[str, Any]:
+        assert self._bridge is not None
+        return {
+            "ok": True,
+            "code": "0",
+            "data": {"obstacles": self._bridge.latest_obstacles()},
+        }
