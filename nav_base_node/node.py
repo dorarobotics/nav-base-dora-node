@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from nav_base_node._watchdog import HeartbeatWatchdog
 from nav_base_node.controller_guard import ControllerGuard
+
+if TYPE_CHECKING:
+    from nav_base_node.nav_bridge import NavBridge
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,7 @@ class NavBaseNode:
         robot_id: str,
         waypoints_path: str = "load_path.yml",
         heartbeat_timeout_ms: int = 1000,
+        nav_bridge: NavBridge | None = None,
     ) -> None:
         self.robot_id = robot_id
         self.waypoints_path = waypoints_path
@@ -27,6 +31,7 @@ class NavBaseNode:
         self.is_estopped: bool = False
         self.estop_reason: str | None = None
         self._guard = ControllerGuard()
+        self._bridge = nav_bridge
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -48,6 +53,12 @@ class NavBaseNode:
         self.register_verb("robot.estop", self._verb_estop)
         self.register_verb("robot.release_control", self._verb_release_control)
         self.register_verb("robot.get_capabilities", self._verb_get_capabilities)
+
+    def install_motion_verbs(self) -> None:
+        """Register vendor.dora_nav.base motion verbs."""
+        if self._bridge is None:
+            raise ValueError("nav_bridge required to install motion verbs")
+        self.register_verb("vendor.dora_nav.base.go_to_pose", self._verb_go_to_pose)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -79,3 +90,33 @@ class NavBaseNode:
                 "streams": ["state", "capabilities", "safety_event"],
             },
         }
+
+    def _verb_go_to_pose(
+        self, *, pose: dict[str, Any], control_source: str = ""
+    ) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        if not isinstance(pose, dict) or "position" not in pose or "orientation" not in pose:
+            return {
+                "ok": False,
+                "code": "INVALID_PARAMS",
+                "msg": "pose must include `position` (xyz) and `orientation` (xyzw)",
+            }
+        position = pose["position"]
+        if not isinstance(position, list) or len(position) != 3:
+            return {
+                "ok": False,
+                "code": "INVALID_PARAMS",
+                "msg": "position must be a length-3 list",
+            }
+        try:
+            self._guard.acquire(control_source)
+        except Exception as e:
+            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        assert self._bridge is not None
+        self._bridge.request_goal(pose)
+        return {"ok": True, "code": "0"}
