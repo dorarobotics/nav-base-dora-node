@@ -33,6 +33,7 @@ class NavBaseNode:
         self.estop_reason: str | None = None
         self._guard = ControllerGuard()
         self._bridge = nav_bridge
+        self._safety_events: list[dict[str, Any]] = []
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -84,10 +85,14 @@ class NavBaseNode:
 
     def _on_heartbeat_timeout(self, _t: float) -> None:
         logger.warning("heartbeat timeout on %s", self.robot_id)
+        self._safety_events.append(
+            {"kind": "heartbeat_timeout", "robot_id": self.robot_id}
+        )
 
     def _verb_estop(self, *, reason: str = "unspecified") -> dict[str, Any]:
         self.is_estopped = True
         self.estop_reason = reason
+        self._safety_events.append({"kind": "estop", "reason": reason})
         return {"ok": True, "code": "0"}
 
     def _verb_release_control(self, *, control_source: str = "") -> dict[str, Any]:
@@ -242,3 +247,9 @@ class NavBaseNode:
             "estop_reason": self.estop_reason,
             "controller_holder": self._guard.holder,
         }
+
+    def drain_safety_events(self) -> list[dict[str, Any]]:
+        """Drain and return all queued safety events."""
+        out = list(self._safety_events)
+        self._safety_events.clear()
+        return out
