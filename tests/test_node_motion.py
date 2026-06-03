@@ -53,3 +53,41 @@ def test_go_to_pose_acquires_motion_lock():
     )
     assert out["ok"] is False
     assert out["code"] == "CONTROLLER_BUSY"
+
+
+def test_go_to_named_queues_resolved_pose(tmp_path):
+    yml = tmp_path / "wp.yaml"
+    yml.write_text(
+        "home:\n  position: [0.0, 0.0, 0.0]\n  orientation: [0.0, 0.0, 0.0, 1.0]\n"
+    )
+    b = FakeNavBridge()
+    n = NavBaseNode(
+        robot_id="nav-base-test", nav_bridge=b, waypoints_path=str(yml)
+    )
+    n.install_common_verbs()
+    n.install_motion_verbs()
+    out = n.dispatch(
+        "vendor.dora_nav.base.go_to_named",
+        {"name": "home", "control_source": "test"},
+    )
+    assert out["ok"] is True
+    assert b.pending_goals[0]["position"] == [0.0, 0.0, 0.0]
+
+
+def test_go_to_named_rejects_unknown_name(tmp_path):
+    yml = tmp_path / "wp.yaml"
+    yml.write_text(
+        "home:\n  position: [0,0,0]\n  orientation: [0,0,0,1]\n"
+    )
+    b = FakeNavBridge()
+    n = NavBaseNode(
+        robot_id="nav-base-test", nav_bridge=b, waypoints_path=str(yml)
+    )
+    n.install_common_verbs()
+    n.install_motion_verbs()
+    out = n.dispatch(
+        "vendor.dora_nav.base.go_to_named",
+        {"name": "attic", "control_source": "test"},
+    )
+    assert out["ok"] is False
+    assert out["code"] == "INVALID_PARAMS"

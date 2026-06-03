@@ -9,6 +9,7 @@ from nav_base_node.controller_guard import ControllerGuard
 
 if TYPE_CHECKING:
     from nav_base_node.nav_bridge import NavBridge
+    from nav_base_node.waypoints import Waypoints
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class NavBaseNode:
         if self._bridge is None:
             raise ValueError("nav_bridge required to install motion verbs")
         self.register_verb("vendor.dora_nav.base.go_to_pose", self._verb_go_to_pose)
+        self.register_verb("vendor.dora_nav.base.go_to_named", self._verb_go_to_named)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -113,6 +115,42 @@ class NavBaseNode:
                 "code": "INVALID_PARAMS",
                 "msg": "position must be a length-3 list",
             }
+        try:
+            self._guard.acquire(control_source)
+        except Exception as e:
+            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        assert self._bridge is not None
+        self._bridge.request_goal(pose)
+        return {"ok": True, "code": "0"}
+
+    def _load_waypoints(self) -> Waypoints | None:
+        from nav_base_node.waypoints import load_waypoints  # noqa: PLC0415
+
+        try:
+            return load_waypoints(self.waypoints_path)
+        except FileNotFoundError:
+            return None
+
+    def _verb_go_to_named(
+        self, *, name: str, control_source: str = ""
+    ) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        wp = self._load_waypoints()
+        if wp is None:
+            return {
+                "ok": False,
+                "code": "INVALID_PARAMS",
+                "msg": f"waypoints file not found: {self.waypoints_path}",
+            }
+        try:
+            pose = wp.lookup(name)
+        except KeyError as e:
+            return {"ok": False, "code": "INVALID_PARAMS", "msg": str(e)}
         try:
             self._guard.acquire(control_source)
         except Exception as e:
