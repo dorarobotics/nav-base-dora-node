@@ -62,6 +62,7 @@ class NavBaseNode:
         self.register_verb("vendor.dora_nav.base.go_to_pose", self._verb_go_to_pose)
         self.register_verb("vendor.dora_nav.base.go_to_named", self._verb_go_to_named)
         self.register_verb("vendor.dora_nav.base.set_velocity", self._verb_set_velocity)
+        self.register_verb("vendor.dora_nav.base.stop", self._verb_stop)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -178,4 +179,11 @@ class NavBaseNode:
         self._bridge.request_cmd_vel(
             {"linear": float(linear), "angular": float(angular)}
         )
+        return {"ok": True, "code": "0"}
+
+    def _verb_stop(self) -> dict[str, Any]:
+        # stop is privileged: works even during estop, ignores controller lock.
+        assert self._bridge is not None
+        self._bridge.cancel()
+        self._bridge.request_cmd_vel({"linear": 0.0, "angular": 0.0})
         return {"ok": True, "code": "0"}

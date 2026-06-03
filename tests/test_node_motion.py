@@ -113,3 +113,27 @@ def test_set_velocity_blocked_by_estop():
     )
     assert out["ok"] is False
     assert out["code"] == "VENDOR_ERROR"
+
+
+def test_stop_cancels_and_zeroes_cmd_vel():
+    n, b = _node()
+    # Simulate prior motion
+    n.dispatch(
+        "vendor.dora_nav.base.go_to_pose",
+        {
+            "pose": {"position": [1.0, 0, 0], "orientation": [0, 0, 0, 1]},
+            "control_source": "test",
+        },
+    )
+    out = n.dispatch("vendor.dora_nav.base.stop", {})
+    assert out["ok"] is True
+    assert b.pending_cancels >= 1
+    assert {"linear": 0.0, "angular": 0.0} in b.pending_cmd_vels
+
+
+def test_stop_still_works_during_estop():
+    """stop should work even if estopped — it's used to bring the robot to rest."""
+    n, b = _node()
+    n.dispatch("robot.estop", {"reason": "test"})
+    out = n.dispatch("vendor.dora_nav.base.stop", {})
+    assert out["ok"] is True
