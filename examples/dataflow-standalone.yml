@@ -3,6 +3,10 @@
 # Demonstrates nav_base_node in isolation — `fake_localization` and `fake_planner`
 # stand in for the real dora-nav nodes so the dataflow boots without a live
 # robot. Replace them with dora-nav's actual nodes when wiring real hardware.
+#
+# dora runs each node with its working directory set to THIS file's directory
+# (examples/), so the script args are bare filenames. Shell nodes require the
+# daemon to be started with DORA_ALLOW_SHELL_NODES=true.
 
 nodes:
   - id: nav_base
@@ -10,7 +14,7 @@ nodes:
     args: python -m nav_base_node
     env:
       ROBOT_ID: nav-base-demo
-      WAYPOINTS_PATH: "examples/waypoints.yaml"
+      WAYPOINTS_PATH: "waypoints.yaml"
       HEARTBEAT_TIMEOUT_MS: "1000"
     inputs:
       cmd_request: cmd_driver/cmd_request
@@ -28,14 +32,16 @@ nodes:
 
   - id: fake_localization
     path: shell
-    args: python examples/fake_localization.py
+    args: python fake_localization.py
+    inputs:
+      tick: dora/timer/millis/500
     outputs:
       - pose
       - obstacles
 
   - id: fake_planner
     path: shell
-    args: python examples/fake_planner.py
+    args: python fake_planner.py
     inputs:
       goal: nav_base/dora_nav_goal
       cancel: nav_base/dora_nav_cancel
@@ -44,13 +50,15 @@ nodes:
 
   - id: cmd_driver
     path: shell
-    args: python examples/cmd_driver.py
+    args: python cmd_driver.py
+    inputs:
+      tick: dora/timer/millis/2000
     outputs:
       - cmd_request
 
   - id: printer
     path: shell
-    args: python examples/printer.py
+    args: python printer.py
     inputs:
       cmd_response: nav_base/cmd_response
       capabilities: nav_base/capabilities
