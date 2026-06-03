@@ -1,0 +1,58 @@
+# Mode B: pure-dora standalone dataflow for nav-base-dora-node.
+#
+# Demonstrates nav_base_node in isolation — `fake_localization` and `fake_planner`
+# stand in for the real dora-nav nodes so the dataflow boots without a live
+# robot. Replace them with dora-nav's actual nodes when wiring real hardware.
+
+nodes:
+  - id: nav_base
+    path: shell
+    args: python -m nav_base_node
+    env:
+      ROBOT_ID: nav-base-demo
+      WAYPOINTS_PATH: "examples/waypoints.yaml"
+      HEARTBEAT_TIMEOUT_MS: "1000"
+    inputs:
+      cmd_request: cmd_driver/cmd_request
+      dora_nav_pose: fake_localization/pose
+      dora_nav_status: fake_planner/status
+      dora_nav_obstacles: fake_localization/obstacles
+    outputs:
+      - cmd_response
+      - capabilities
+      - state
+      - safety_event
+      - dora_nav_goal
+      - dora_nav_cancel
+      - dora_nav_cmd_vel
+
+  - id: fake_localization
+    path: shell
+    args: python examples/fake_localization.py
+    outputs:
+      - pose
+      - obstacles
+
+  - id: fake_planner
+    path: shell
+    args: python examples/fake_planner.py
+    inputs:
+      goal: nav_base/dora_nav_goal
+      cancel: nav_base/dora_nav_cancel
+    outputs:
+      - status
+
+  - id: cmd_driver
+    path: shell
+    args: python examples/cmd_driver.py
+    outputs:
+      - cmd_request
+
+  - id: printer
+    path: shell
+    args: python examples/printer.py
+    inputs:
+      cmd_response: nav_base/cmd_response
+      capabilities: nav_base/capabilities
+      state: nav_base/state
+      safety_event: nav_base/safety_event
