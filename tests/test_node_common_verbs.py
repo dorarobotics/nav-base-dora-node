@@ -48,3 +48,16 @@ def test_release_control_by_non_holder_is_ok_but_noop():
     out = node.dispatch("robot.release_control", {"control_source": "stranger"})
     assert out["ok"] is True
     assert node._guard.holder == "caller-a"
+
+
+def test_get_capabilities_returns_spec_advert_shape():
+    node = NavBaseNode(robot_id="nav-base-test")
+    node.install_common_verbs()
+    out = node.dispatch("robot.get_capabilities", {})
+    assert out["ok"] is True
+    data = out["data"]
+    assert data["spec_version"] == "1.0.0"
+    assert data["vendor"] == "dora_nav"
+    assert data["model"] == "base"
+    assert "robot.heartbeat" in data["verbs"]
+    assert "state" in data["streams"]
