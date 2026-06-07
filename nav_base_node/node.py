@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from nav_base_node._watchdog import HeartbeatWatchdog
@@ -34,6 +35,15 @@ class NavBaseNode:
         self._guard = ControllerGuard()
         self._bridge = nav_bridge
         self._safety_events: list[dict[str, Any]] = []
+        self._state_seq = 0
+        self._safety_seq = 0
+        self._seq_lock = threading.Lock()
+
+    def _queue_safety_event(self, payload: dict[str, Any]) -> None:
+        with self._seq_lock:
+            self._safety_seq += 1
+            seq = self._safety_seq
+        self._safety_events.append({**payload, "seq": seq})
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -97,7 +107,7 @@ class NavBaseNode:
         self.estop_reason = "heartbeat_timeout"
         self._watchdog.disarm()
         self._safe_stop()
-        self._safety_events.append(
+        self._queue_safety_event(
             {"kind": "heartbeat_timeout", "robot_id": self.robot_id}
         )
 
@@ -111,7 +121,7 @@ class NavBaseNode:
         self.is_estopped = True
         self.estop_reason = reason
         self._watchdog.disarm()
-        self._safety_events.append({"kind": "estop", "reason": reason})
+        self._queue_safety_event({"kind": "estop", "reason": reason})
         # A latched flag is not enough for a mobile base — actively stop it.
         self._safe_stop()
         return {"ok": True, "code": "0"}
@@ -261,6 +271,9 @@ class NavBaseNode:
 
     def state_snapshot(self) -> dict[str, Any]:
         """Return current state snapshot for 5 Hz state stream."""
+        with self._seq_lock:
+            self._state_seq += 1
+            seq = self._state_seq
         if self._bridge is None:
             return {
                 "robot_id": self.robot_id,
@@ -270,6 +283,7 @@ class NavBaseNode:
                 "estopped": self.is_estopped,
                 "estop_reason": self.estop_reason,
                 "controller_holder": self._guard.holder,
+                "seq": seq,
             }
         return {
             "robot_id": self.robot_id,
@@ -279,6 +293,7 @@ class NavBaseNode:
             "estopped": self.is_estopped,
             "estop_reason": self.estop_reason,
             "controller_holder": self._guard.holder,
+            "seq": seq,
         }
 
     def drain_safety_events(self) -> list[dict[str, Any]]:

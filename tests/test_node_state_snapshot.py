@@ -30,3 +30,15 @@ def test_state_snapshot_reflects_estop():
     snap = n.state_snapshot()
     assert snap["estopped"] is True
     assert snap["estop_reason"] == "test"
+
+
+def test_state_snapshot_has_monotonic_seq():
+    n, _ = _full_node()
+    assert n.state_snapshot()["seq"] == 1
+    assert n.state_snapshot()["seq"] == 2
+
+
+def test_state_snapshot_has_seq_without_bridge():
+    n = NavBaseNode(robot_id="nav-base-test")
+    n.install_common_verbs()
+    assert n.state_snapshot()["seq"] == 1
