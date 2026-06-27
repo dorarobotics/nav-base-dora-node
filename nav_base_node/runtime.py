@@ -68,6 +68,24 @@ def _emit(dora_node: DoraNodeLike, output_id: str, payload: Any) -> None:
     dora_node.send_output(output_id, pa.array([json.dumps(payload)]))
 
 
+def _as_event_dict(event: Any) -> dict[str, Any]:
+    """Normalize a dora event to a dict.
+
+    The custom dora fork yields dict events; stock ``dora-rs`` yields a
+    subscript-only ``PyEvent`` (no ``.get``). Coerce the latter so the event
+    loop works on both. Dicts pass through unchanged.
+    """
+    if isinstance(event, dict):
+        return event
+    out: dict[str, Any] = {}
+    for key in ("type", "id", "value", "metadata", "error"):
+        try:
+            out[key] = event[key]
+        except Exception:  # noqa: BLE001
+            out[key] = None
+    return out
+
+
 class NavBaseRuntime:
     """Binds a NavBaseNode + LocalNavBridge to a dora node: dispatches
     cmd_request → cmd_response, relays goals/cancels/cmd_vels to dora-nav, feeds
@@ -100,6 +118,7 @@ class NavBaseRuntime:
 
     def on_event(self, event: dict[str, Any], dora_node: DoraNodeLike) -> bool:
         """Process one dora event. Returns False when the loop should stop."""
+        event = _as_event_dict(event)
         etype = event.get("type")
         if etype == "STOP":
             return False
